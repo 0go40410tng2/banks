@@ -1,0 +1,196 @@
+To implement unit tests using Pytest for the given Flask application while achieving a minimum of 80% code coverage, follow these steps:
+
+
+---
+
+1. Setup for Testing
+
+Create a separate test configuration for the database.
+
+Use an in-memory SQLite database for quick and isolated testing.
+
+Mock database connections using SQLAlchemy's create_engine with a SQLite URL.
+
+
+Create test_config.py:
+
+TESTING = True
+SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+
+---
+
+2. Install Dependencies
+
+Ensure the following dependencies are installed:
+
+pip install pytest pytest-cov Flask-SQLAlchemy
+
+
+---
+
+3. Test File Structure
+
+Create a folder named tests/, and include the following:
+
+test_accounts.py: Contains unit tests for the /accounts endpoint.
+
+conftest.py: Holds fixtures for reusable test setups like the mock database connection.
+
+
+
+---
+
+4. Fixtures and Setup in conftest.py
+
+Fixtures help initialize your app and database for testing.
+
+tests/conftest.py:
+
+import pytest
+from app import app, db, Account
+
+@pytest.fixture
+def client():
+    # Configure app for testing
+    app.config.from_object('test_config')
+    with app.test_client() as client:
+        with app.app_context():
+            db.create_all()  # Create tables
+        yield client
+        # Teardown
+        with app.app_context():
+            db.session.remove()
+            db.drop_all()
+
+@pytest.fixture
+def mock_account_data():
+    """Provide mock data for accounts."""
+    return [
+        Account(account_id=1, account_type_code=101, customer_id=1, account_name="Test Account 1", 
+                date_opened="2024-12-01", current_balance=1000.00),
+        Account(account_id=2, account_type_code=102, customer_id=2, account_name="Test Account 2", 
+                date_opened="2024-12-02", current_balance=2000.00)
+    ]
+
+
+---
+
+5. Write Unit Tests
+
+Unit tests should cover CRUD operations, error handling, and edge cases.
+
+tests/test_accounts.py:
+
+import pytest
+from app import db, Account
+
+# Test GET /accounts
+def test_get_accounts(client, mock_account_data):
+    db.session.add_all(mock_account_data)
+    db.session.commit()
+
+    response = client.get('/accounts')
+    assert response.status_code == 200
+    data = response.get_json()
+    assert len(data) == 2
+    assert data[0]['account_name'] == "Test Account 1"
+
+# Test POST /accounts
+def test_create_account(client):
+    new_account = {
+        "account_id": 3,
+        "account_type_code": 103,
+        "customer_id": 3,
+        "account_name": "Test Account 3",
+        "date_opened": "2024-12-03",
+        "current_balance": 3000.00
+    }
+    response = client.post('/accounts', json=new_account)
+    assert response.status_code == 201
+    data = response.get_json()
+    assert data['message'] == "Account created successfully"
+
+# Test GET /accounts/<id>
+def test_get_account_by_id(client, mock_account_data):
+    db.session.add_all(mock_account_data)
+    db.session.commit()
+
+    response = client.get('/accounts/1')
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['account_name'] == "Test Account 1"
+
+# Test PUT /accounts/<id>
+def test_update_account(client, mock_account_data):
+    db.session.add_all(mock_account_data)
+    db.session.commit()
+
+    updated_data = {"account_name": "Updated Account", "current_balance": 1500.00}
+    response = client.put('/accounts/1', json=updated_data)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['message'] == "Account updated successfully"
+
+    account = Account.query.get(1)
+    assert account.account_name == "Updated Account"
+    assert float(account.current_balance) == 1500.00
+
+# Test DELETE /accounts/<id>
+def test_delete_account(client, mock_account_data):
+    db.session.add_all(mock_account_data)
+    db.session.commit()
+
+    response = client.delete('/accounts/1')
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['message'] == "Account and related transactions deleted successfully"
+
+    account = Account.query.get(1)
+    assert account is None
+
+# Edge Case: GET non-existent account
+def test_get_non_existent_account(client):
+    response = client.get('/accounts/999')
+    assert response.status_code == 404
+    data = response.get_json()
+    assert data['error'] == "Account not found"
+
+
+---
+
+6. Run Tests with Coverage
+
+Run the tests and check for code coverage using pytest and pytest-cov:
+
+pytest --cov=app tests/
+
+Example Output:
+
+---------- coverage: platform linux, python 3.10 ----------
+Name                         Stmts   Miss  Cover
+----------------------------------------------
+app.py                         102     10    90%
+----------------------------------------------
+TOTAL                          102     10    90%
+
+
+---
+
+7. Edge Cases to Include
+
+POST with missing required fields or invalid data types.
+
+PUT for an account that doesn't exist.
+
+DELETE for an account with no linked transactions.
+
+Large numeric values for fields like current_balance.
+
+
+
+---
+
+By following these steps, you'll achieve robust test coverage and edge-case handling, ensuring your application is reliable and maintainable.
+
